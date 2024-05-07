@@ -21,7 +21,13 @@ class SnakeGame extends StatefulWidget {
   double caseWidth;
 
   /// Duration between each ticks
-  final Duration durationBetweenTicks;
+  final int defaultSpeed;
+
+  /// Min snake speed
+  final int minSpeed;
+
+  /// Min snake speed
+  final int increaseSpeed;
 
   /// Number of case horizontally (x)
   final int numberCaseHorizontally;
@@ -36,6 +42,15 @@ class SnakeGame extends StatefulWidget {
   final Color colorBackground1;
   final Color colorBackground2;
 
+  /// is Lava (fire cell) enabled
+  final bool isLavaEnabled;
+
+  /// Limit of lava (fire cells) that can be appeared on the board
+  final int limitLavaBoard;
+
+  /// First number of food eaten cases that lava (fire cells) not appears
+  final int numberCaseNoLava;
+
   /// Snake image body and fruit
   final String? snakeHeadImgPath;
   final String? snakeBodyImgPath;
@@ -44,14 +59,17 @@ class SnakeGame extends StatefulWidget {
   final String? snakeFruitImgPath;
   final String? snakeCashImgPath;
   final String? snakeCoinImgPath;
+  final String? snakeLavaImgPath;
+  final String? snakeSpinImgPath;
   final List<CASE_TYPE> foodList;
+  final bool isPaused;
 
   SnakeGame({
     Key? key,
     required this.caseWidth,
     required this.numberCaseHorizontally,
     required this.numberCaseVertically,
-    this.durationBetweenTicks = const Duration(milliseconds: 500),
+    this.defaultSpeed = 450,
     this.controllerEvent,
     this.colorBackground1 = Colors.greenAccent,
     this.colorBackground2 = Colors.green,
@@ -63,6 +81,14 @@ class SnakeGame extends StatefulWidget {
     required this.foodList,
     this.snakeCashImgPath,
     this.snakeCoinImgPath,
+    this.isPaused = false,
+    this.snakeLavaImgPath,
+    this.isLavaEnabled = false,
+    this.limitLavaBoard = 26,
+    this.numberCaseNoLava = 3,
+    this.minSpeed = 200,
+    this.increaseSpeed = 10,
+    this.snakeSpinImgPath,
   }) : super(
           key: key,
         ) {
@@ -84,16 +110,22 @@ class _SnakeGameState extends State<SnakeGame> {
 
   /// Loop for the game
   Timer? timer;
+  late int snakeSpeed;
 
   @override
   void initState() {
     super.initState();
+
+    snakeSpeed = widget.defaultSpeed;
 
     /// Init the board
     _board = SnakeBoard(
       foodList: widget.foodList,
       numberCaseHorizontally: widget.numberCaseHorizontally,
       numberCaseVertically: widget.numberCaseVertically,
+      isLavaEnabled: widget.isLavaEnabled,
+      limitLavaBoard: widget.limitLavaBoard,
+      numberCaseNoLava: widget.numberCaseNoLava,
     );
 
     /// Init the controller
@@ -107,9 +139,11 @@ class _SnakeGameState extends State<SnakeGame> {
     });
 
     /// Defines the loop for the game
-    timer = Timer.periodic(widget.durationBetweenTicks, (Timer t) {
-      controller?.add(widget.getDirection);
-      widget.nextDirection = SNAKE_MOVE.front;
+    timer = Timer.periodic(Duration(milliseconds: snakeSpeed), (Timer t) {
+      if (!widget.isPaused) {
+        controller?.add(widget.getDirection);
+        widget.nextDirection = SNAKE_MOVE.front;
+      }
     });
   }
 
@@ -130,17 +164,34 @@ class _SnakeGameState extends State<SnakeGame> {
       widget.controllerEvent?.add(event);
 
       /// Check if the game is finished
-      if (event == GAME_EVENT.win || event == GAME_EVENT.hit_his_tail || event == GAME_EVENT.out_of_map) {
+      if (event == GAME_EVENT.win ||
+          event == GAME_EVENT.hit_his_tail ||
+          event == GAME_EVENT.out_of_map ||
+          event == GAME_EVENT.touch_lava) {
         timer?.cancel();
         timer = null;
+      }
+      if ((event == GAME_EVENT.cash_eaten || event == GAME_EVENT.coin_eaten) && snakeSpeed > widget.minSpeed) {
+        timer?.cancel();
+        timer = null;
+        _increaseSpeed();
       }
     }
   }
 
+  void _increaseSpeed() {
+    snakeSpeed = snakeSpeed - widget.increaseSpeed;
+    timer = Timer.periodic(Duration(milliseconds: snakeSpeed), (Timer t) {
+      if (!widget.isPaused) {
+        controller?.add(widget.getDirection);
+        widget.nextDirection = SNAKE_MOVE.front;
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: Colors.black,
+    return SizedBox(
       width: widget.caseWidth * widget.numberCaseHorizontally,
       height: widget.caseWidth * widget.numberCaseVertically,
       child: _printBoard(),
@@ -186,6 +237,14 @@ class _SnakeGameState extends State<SnakeGame> {
           case CASE_TYPE.coin:
             defaultImg = widget.snakeFruitImgPath == null;
             imgIcon = widget.snakeCoinImgPath ?? "assets/default_snake_point.png";
+            break;
+          case CASE_TYPE.lava:
+            defaultImg = widget.snakeLavaImgPath == null;
+            imgIcon = widget.snakeLavaImgPath ?? "assets/default_snake_lava.png";
+            break;
+          case CASE_TYPE.spin:
+            defaultImg = widget.snakeSpinImgPath == null;
+            imgIcon = widget.snakeSpinImgPath ?? "assets/default_snake_point.png";
             break;
           default:
         }

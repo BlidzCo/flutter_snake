@@ -18,14 +18,29 @@ class SnakeBoard {
 
   /// Number of case horizontally (y)
   final int numberCaseVertically;
+
+  /// is Lava (fire cell) enabled
+  final bool isLavaEnabled;
+
+  /// Limit of lava (fire cells) that can be appeared on the board
+  final int limitLavaBoard;
+
+  /// First number of food eaten cases that lava (fire cells) not appears
+  final int numberCaseNoLava;
+
   int currentIndex = 0;
 
   final List<CASE_TYPE> foodList;
+
+  int eatFoodCount = 0;
 
   SnakeBoard({
     required this.numberCaseHorizontally,
     required this.numberCaseVertically,
     required this.foodList,
+    this.isLavaEnabled = false,
+    this.limitLavaBoard = 26,
+    this.numberCaseNoLava = 3,
   }) {
     /// Instanciate the board
     _initBoard();
@@ -177,6 +192,7 @@ class SnakeBoard {
       }
     }
     if (_board[_snake.posY][_snake.posX].caseType == CASE_TYPE.fruit ||
+        _board[_snake.posY][_snake.posX].caseType == CASE_TYPE.spin ||
         _board[_snake.posY][_snake.posX].caseType == CASE_TYPE.cash ||
         _board[_snake.posY][_snake.posX].caseType == CASE_TYPE.coin) {
       /// Add a new part of the snake if the head is on a food
@@ -198,6 +214,9 @@ class SnakeBoard {
           break;
         case CASE_TYPE.coin:
           event = GAME_EVENT.coin_eaten;
+          break;
+        case CASE_TYPE.spin:
+          event = GAME_EVENT.spin_eaten;
           break;
         default:
           break;
@@ -238,6 +257,7 @@ class SnakeBoard {
   /// Update the board
   GAME_EVENT? _updateBoard() {
     bool hitHisTail = false;
+    bool touchLava = false;
     for (List<BoardCase> boardLine in _board) {
       for (BoardCase boardCase in boardLine) {
         boardCase.partSnake = null;
@@ -251,8 +271,14 @@ class SnakeBoard {
       if (snakeTmp.next == null) {
         _board[snakeTmp.posY][snakeTmp.posX].caseType = CASE_TYPE.empty;
       }
+      if (_board[_snake.posY][_snake.posX].caseType == CASE_TYPE.lava) {
+        touchLava = true;
+      }
       _board[snakeTmp.posY][snakeTmp.posX].partSnake = snakeTmp;
       snakeTmp = snakeTmp.next;
+    }
+    if (touchLava) {
+      return GAME_EVENT.touch_lava;
     }
     return hitHisTail ? GAME_EVENT.hit_his_tail : _manageFood();
   }
@@ -267,6 +293,7 @@ class SnakeBoard {
         if (boardCase.caseType == CASE_TYPE.empty && boardCase.partSnake == null) {
           emptyCases.add(boardCase);
         } else if ((boardCase.caseType == CASE_TYPE.fruit ||
+                boardCase.caseType == CASE_TYPE.spin ||
                 boardCase.caseType == CASE_TYPE.cash ||
                 boardCase.caseType == CASE_TYPE.coin) &&
             boardCase.partSnake == null) {
@@ -275,6 +302,9 @@ class SnakeBoard {
       }
     }
     if (nbFood == 0) {
+      // Increment number of foods(cash, coint, fruit) that snake eats
+      eatFoodCount++;
+
       /// Place a food on a empty case randomly
       var rng = new Random();
       if (foodList.isNotEmpty && currentIndex < foodList.length) {
@@ -283,9 +313,18 @@ class SnakeBoard {
       } else {
         emptyCases[rng.nextInt(emptyCases.length)].caseType = CASE_TYPE.fruit;
       }
+      //
+      // Add lava(fire cell) to the board when snake eats every second type of food(cash,coin, fruit)
+      // Let the user to collect some foods(cash, coint, fruit) first
+      // Set the limit for lava (fire cell) that can be appear on the board
+      //
+      if (isLavaEnabled && eatFoodCount.isEven && eatFoodCount > numberCaseNoLava && eatFoodCount <= limitLavaBoard) {
+        emptyCases[rng.nextInt(emptyCases.length)].caseType = CASE_TYPE.lava;
+      }
     }
+
     if (emptyCases.isEmpty) {
-      return GAME_EVENT.win;
+      return GAME_EVENT.hit_his_tail;
     }
   }
 
