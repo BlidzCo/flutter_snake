@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:flutter_snake/src/models/reward_config.dart';
 import 'package:flutter_snake/src/snake_enums/snake_enums.dart';
 import 'package:flutter_snake/src/utils/utils.dart';
 
@@ -30,7 +31,10 @@ class SnakeBoard {
 
   int currentIndex = 0;
 
-  final List<CASE_TYPE> foodList;
+  final List<String> foodList;
+
+  /// Reward configurations to check for isDefaultReward
+  final Map<String, RewardConfig> rewardConfigs;
 
   int eatFoodCount = 0;
 
@@ -38,6 +42,7 @@ class SnakeBoard {
     required this.numberCaseHorizontally,
     required this.numberCaseVertically,
     required this.foodList,
+    required this.rewardConfigs,
     this.isLavaEnabled = false,
     this.limitLavaBoard = 26,
     this.numberCaseNoLava = 3,
@@ -191,10 +196,7 @@ class SnakeBoard {
         direction = SNAKE_DIRECTION.left;
       }
     }
-    if (_board[_snake.posY][_snake.posX].caseType == CASE_TYPE.fruit ||
-        _board[_snake.posY][_snake.posX].caseType == CASE_TYPE.spin ||
-        _board[_snake.posY][_snake.posX].caseType == CASE_TYPE.cash ||
-        _board[_snake.posY][_snake.posX].caseType == CASE_TYPE.coin) {
+    if (_board[_snake.posY][_snake.posX].hasReward) {
       /// Add a new part of the snake if the head is on a food
       SnakePart newPart = SnakePart(
         type: SNAKE_BODY.body,
@@ -205,21 +207,13 @@ class SnakeBoard {
       );
       _snake.next!.previous = newPart;
       _snake.next = newPart;
-      switch (_board[_snake.posY][_snake.posX].caseType) {
-        case CASE_TYPE.fruit:
-          event = GAME_EVENT.fruit_eaten;
-          break;
-        case CASE_TYPE.cash:
-          event = GAME_EVENT.cash_eaten;
-          break;
-        case CASE_TYPE.coin:
-          event = GAME_EVENT.coin_eaten;
-          break;
-        case CASE_TYPE.spin:
-          event = GAME_EVENT.spin_eaten;
-          break;
-        default:
-          break;
+      BoardCase currentCase = _board[_snake.posY][_snake.posX];
+      if (currentCase.isDefaultReward(rewardConfigs)) {
+        event = GAME_EVENT.fruit_eaten;
+      } else {
+        // All other reward types use custom_reward_eaten
+        // The main app can identify the specific reward type via the callback
+        event = GAME_EVENT.custom_reward_eaten;
       }
     } else {
       /// Move all the snake depends on his previous part
@@ -290,13 +284,11 @@ class SnakeBoard {
 
     for (List<BoardCase> boardLine in _board) {
       for (BoardCase boardCase in boardLine) {
-        if (boardCase.caseType == CASE_TYPE.empty && boardCase.partSnake == null) {
-          emptyCases.add(boardCase);
-        } else if ((boardCase.caseType == CASE_TYPE.fruit ||
-                boardCase.caseType == CASE_TYPE.spin ||
-                boardCase.caseType == CASE_TYPE.cash ||
-                boardCase.caseType == CASE_TYPE.coin) &&
+        if (boardCase.caseType == CASE_TYPE.empty &&
+            boardCase.customRewardType == null &&
             boardCase.partSnake == null) {
+          emptyCases.add(boardCase);
+        } else if (boardCase.hasReward && boardCase.partSnake == null) {
           nbFood++;
         }
       }
@@ -307,11 +299,18 @@ class SnakeBoard {
 
       /// Place a food on a empty case randomly
       var rng = new Random();
+      BoardCase selectedCase = emptyCases[rng.nextInt(emptyCases.length)];
+
       if (foodList.isNotEmpty && currentIndex < foodList.length) {
-        emptyCases[rng.nextInt(emptyCases.length)].caseType = foodList[currentIndex];
+        String rewardType = foodList[currentIndex];
+        // All rewards are custom rewards now - no special handling for 'fruit'
+        selectedCase.caseType = CASE_TYPE.empty;
+        selectedCase.customRewardType = rewardType;
         currentIndex++;
       } else {
-        emptyCases[rng.nextInt(emptyCases.length)].caseType = CASE_TYPE.fruit;
+        // When no more items in foodList, fallback to CASE_TYPE.fruit (backward compatibility)
+        selectedCase.caseType = CASE_TYPE.fruit;
+        selectedCase.customRewardType = null;
       }
       //
       // Add lava(fire cell) to the board when snake eats every second type of food(cash,coin, fruit)
@@ -364,4 +363,17 @@ class SnakeBoard {
 
   /// Get the board
   List<List<BoardCase>> get board => _board;
+
+  /// Get the current reward type at the snake head position (used for custom reward identification)
+  String? get currentHeadRewardType {
+    BoardCase? headCase = getCase(_snake.posY, _snake.posX);
+    if (headCase == null) return null;
+
+    // Return null for default rewards (they're handled differently), return actual ID for custom rewards
+    if (headCase.isDefaultReward(rewardConfigs)) {
+      return null;
+    }
+
+    return headCase.rewardId;
+  }
 }

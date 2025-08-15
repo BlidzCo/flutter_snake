@@ -22,7 +22,8 @@
 
 library flutter_snake;
 
-export 'src/snake_game.dart';
-export 'src/snake_enums/snake_move.dart';
+export 'src/models/reward_config.dart';
 export 'src/snake_enums/case_type.dart';
 export 'src/snake_enums/game_event.dart';
+export 'src/snake_enums/snake_move.dart';
+export 'src/snake_game.dart';

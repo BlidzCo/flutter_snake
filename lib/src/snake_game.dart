@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_snake/src/snake_board.dart';
 
+import 'models/reward_config.dart';
 import 'snake_enums/snake_enums.dart';
 import 'utils/utils.dart';
 
@@ -38,6 +39,10 @@ class SnakeGame extends StatefulWidget {
   /// If defines, the controller stream receive the game event
   final StreamController<GAME_EVENT>? controllerEvent;
 
+  /// Optional callback to get detailed reward information when custom rewards are eaten
+  /// Called with (rewardId, rewardConfig) when custom_reward_eaten event occurs
+  final void Function(String rewardId, RewardConfig? config)? onCustomRewardEaten;
+
   /// Color variation for the background
   final Color colorBackground1;
   final Color colorBackground2;
@@ -51,17 +56,23 @@ class SnakeGame extends StatefulWidget {
   /// First number of food eaten cases that lava (fire cells) not appears
   final int numberCaseNoLava;
 
-  /// Snake image body and fruit
+  /// Snake internal resources
   final String? snakeHeadImgPath;
   final String? snakeBodyImgPath;
   final String? snakeBodyTurnImgPath;
   final String? snakeTailImgPath;
-  final String? snakeFruitImgPath;
-  final String? snakeCashImgPath;
-  final String? snakeCoinImgPath;
   final String? snakeLavaImgPath;
-  final String? snakeSpinImgPath;
-  final List<CASE_TYPE> foodList;
+
+  /// Always default reward, do not remove or change this
+  final String? snakeFruitImgPath;
+
+  /// Custom reward configurations - Map<rewardId, RewardConfig>
+  final Map<String, RewardConfig> rewardConfigs;
+
+  /// List of food types (custom reward IDs)
+  final List<String> foodList;
+
+  /// If the game is paused
   final bool isPaused;
 
   SnakeGame({
@@ -71,6 +82,7 @@ class SnakeGame extends StatefulWidget {
     required this.numberCaseVertically,
     this.defaultSpeed = 450,
     this.controllerEvent,
+    this.onCustomRewardEaten,
     this.colorBackground1 = Colors.greenAccent,
     this.colorBackground2 = Colors.green,
     this.snakeBodyImgPath,
@@ -79,8 +91,7 @@ class SnakeGame extends StatefulWidget {
     this.snakeFruitImgPath,
     this.snakeHeadImgPath,
     required this.foodList,
-    this.snakeCashImgPath,
-    this.snakeCoinImgPath,
+    this.rewardConfigs = const {},
     this.isPaused = false,
     this.snakeLavaImgPath,
     this.isLavaEnabled = false,
@@ -88,7 +99,6 @@ class SnakeGame extends StatefulWidget {
     this.numberCaseNoLava = 3,
     this.minSpeed = 200,
     this.increaseSpeed = 10,
-    this.snakeSpinImgPath,
   }) : super(
           key: key,
         ) {
@@ -121,6 +131,7 @@ class _SnakeGameState extends State<SnakeGame> {
     /// Init the board
     _board = SnakeBoard(
       foodList: widget.foodList,
+      rewardConfigs: widget.rewardConfigs,
       numberCaseHorizontally: widget.numberCaseHorizontally,
       numberCaseVertically: widget.numberCaseVertically,
       isLavaEnabled: widget.isLavaEnabled,
@@ -163,6 +174,11 @@ class _SnakeGameState extends State<SnakeGame> {
     if (event != null) {
       widget.controllerEvent?.add(event);
 
+      /// Handle custom reward eaten event
+      if (event == GAME_EVENT.custom_reward_eaten) {
+        _handleCustomRewardEaten();
+      }
+
       /// Check if the game is finished
       if (event == GAME_EVENT.win ||
           event == GAME_EVENT.hit_his_tail ||
@@ -171,7 +187,8 @@ class _SnakeGameState extends State<SnakeGame> {
         timer?.cancel();
         timer = null;
       }
-      if ((event == GAME_EVENT.cash_eaten || event == GAME_EVENT.coin_eaten) && snakeSpeed > widget.minSpeed) {
+      // Check if the eaten reward should increase speed
+      if (_shouldIncreaseSpeed(event) && snakeSpeed > widget.minSpeed) {
         timer?.cancel();
         timer = null;
         _increaseSpeed();
@@ -187,6 +204,50 @@ class _SnakeGameState extends State<SnakeGame> {
         widget.nextDirection = SNAKE_MOVE.front;
       }
     });
+  }
+
+  /// Handle custom reward eaten event
+  void _handleCustomRewardEaten() {
+    if (widget.onCustomRewardEaten != null && _board != null) {
+      String? rewardId = _board!.currentHeadRewardType;
+      if (rewardId != null) {
+        RewardConfig? config = widget.rewardConfigs[rewardId];
+        widget.onCustomRewardEaten!(rewardId, config);
+      }
+    }
+  }
+
+  /// Determines if a given game event should trigger speed increase
+  bool _shouldIncreaseSpeed(GAME_EVENT event) {
+    switch (event) {
+      case GAME_EVENT.custom_reward_eaten:
+        // For all custom rewards (including legacy cash, coin, spin), check config
+        return _shouldCustomRewardIncreaseSpeed();
+      case GAME_EVENT.fruit_eaten:
+        // Default fruit doesn't increase speed
+        return false;
+      default:
+        return false;
+    }
+  }
+
+  /// Check if the current custom reward should increase speed
+  bool _shouldCustomRewardIncreaseSpeed() {
+    if (_board != null) {
+      String? rewardId = _board!.currentHeadRewardType;
+      if (rewardId != null) {
+        RewardConfig? config = widget.rewardConfigs[rewardId];
+        if (config != null) {
+          return config.increasesSpeed;
+        }
+
+        // Legacy behavior for cash and coin (if not explicitly configured)
+        if (rewardId == 'cash' || rewardId == 'coin') {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   @override
@@ -224,29 +285,25 @@ class _SnakeGameState extends State<SnakeGame> {
             ? widget.colorBackground1
             : widget.colorBackground2;
 
-        /// Check if the case contain food
-        switch (boardCase.caseType) {
-          case CASE_TYPE.fruit:
+        /// Check if the case contains food or rewards
+        if (boardCase.hasReward) {
+          if (boardCase.isDefaultReward(widget.rewardConfigs)) {
+            // Default reward (uses snakeFruitImgPath)
             defaultImg = widget.snakeFruitImgPath == null;
             imgIcon = widget.snakeFruitImgPath ?? "assets/default_snake_fruit.png";
-            break;
-          case CASE_TYPE.cash:
-            defaultImg = widget.snakeFruitImgPath == null;
-            imgIcon = widget.snakeCashImgPath ?? "assets/default_snake_cash.png";
-            break;
-          case CASE_TYPE.coin:
-            defaultImg = widget.snakeFruitImgPath == null;
-            imgIcon = widget.snakeCoinImgPath ?? "assets/default_snake_point.png";
-            break;
-          case CASE_TYPE.lava:
-            defaultImg = widget.snakeLavaImgPath == null;
-            imgIcon = widget.snakeLavaImgPath ?? "assets/default_snake_lava.png";
-            break;
-          case CASE_TYPE.spin:
-            defaultImg = widget.snakeSpinImgPath == null;
-            imgIcon = widget.snakeSpinImgPath ?? "assets/default_snake_point.png";
-            break;
-          default:
+          } else {
+            // Custom reward
+            String rewardId = boardCase.rewardId;
+            if (widget.rewardConfigs.containsKey(rewardId)) {
+              RewardConfig config = widget.rewardConfigs[rewardId]!;
+              defaultImg = false; // Custom images are never default package assets
+              imgIcon = config.imagePath;
+            }
+          }
+        } else if (boardCase.caseType == CASE_TYPE.lava) {
+          // Handle lava (hazard, not a reward)
+          defaultImg = widget.snakeLavaImgPath == null;
+          imgIcon = widget.snakeLavaImgPath ?? "assets/default_snake_lava.png";
         }
 
         /// Check if a snake is on it

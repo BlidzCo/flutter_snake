@@ -78,7 +78,7 @@ class _MyHomePageState extends State<MyHomePage> {
   Widget build(BuildContext context) {
     final SnakeGame snakeGame = new SnakeGame(
       isPaused: isPaused,
-      foodList: _enumList,
+      foodList: ['cash', 'coin', 'fruit'],
       caseWidth: 25.0,
       numberCaseHorizontally: 14,
       numberCaseVertically: 24,
