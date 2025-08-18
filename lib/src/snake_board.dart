@@ -207,6 +207,7 @@ class SnakeBoard {
       );
       _snake.next!.previous = newPart;
       _snake.next = newPart;
+
       BoardCase currentCase = _board[_snake.posY][_snake.posX];
       if (currentCase.isDefaultReward(rewardConfigs)) {
         event = GAME_EVENT.fruit_eaten;
@@ -215,6 +216,10 @@ class SnakeBoard {
         // The main app can identify the specific reward type via the callback
         event = GAME_EVENT.custom_reward_eaten;
       }
+
+      /// Clear the reward from this position since it's been eaten
+      currentCase.caseType = CASE_TYPE.empty;
+      currentCase.customRewardType = null;
     } else {
       /// Move all the snake depends on his previous part
       SnakePart? snakeTmp = _tail;
@@ -263,7 +268,9 @@ class SnakeBoard {
         hitHisTail = true;
       }
       if (snakeTmp.next == null) {
+        /// Clear the tail position completely (both caseType and customRewardType)
         _board[snakeTmp.posY][snakeTmp.posX].caseType = CASE_TYPE.empty;
+        _board[snakeTmp.posY][snakeTmp.posX].customRewardType = null;
       }
       if (_board[_snake.posY][_snake.posX].caseType == CASE_TYPE.lava) {
         touchLava = true;
